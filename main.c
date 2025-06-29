@@ -1,5 +1,6 @@
 // QuickDrop main.c
-// Compile with: g++ -std=c++11 main.c -o QuickDrop
+// Compile with: g++ -std=c++11 main.c compression.c -lzstd -o QuickDrop
+// maybe this g++ -std=c++11 main.c compression.c -lzstd -I/opt/homebrew/include -L/opt/homebrew/lib -o QuickDrop
 
 #include <iostream>
 #include <vector>
@@ -8,6 +9,7 @@
 #include <cstring>
 #include <atomic>
 #include <string>
+#include <cstdint>
 
 #ifdef _WIN32
   #include <winsock2.h>
@@ -21,6 +23,10 @@
   #include <netinet/in.h>
   #define CLOSE_SOCKET close
 #endif
+
+// Forward declarations for compression functions (implemented in compression.c)
+bool compressChunk(const std::vector<char>& in, std::vector<char>& out);
+bool decompressChunk(const std::vector<char>& in, std::vector<char>& out, size_t origSize);
 
 // Configuration constants
 static const int CHUNK_SIZE = 64 * 1024;  // 64 KB
@@ -78,12 +84,19 @@ void sendFile(int fd, const std::string &path) {
     std::cout << "[DEBUG] Sending file: " << path << std::endl;
     FILE* f = fopen(path.c_str(), "rb");
     if (!f) { perror("fopen sendFile"); return; }
-    char buf[CHUNK_SIZE]; size_t n;
-    while ((n = fread(buf,1,CHUNK_SIZE,f)) > 0) {
+    std::vector<char> buffer(CHUNK_SIZE);
+    size_t bytesRead;
+    while ((bytesRead = fread(buffer.data(), 1, CHUNK_SIZE, f)) > 0) {
+        std::vector<char> raw(buffer.begin(), buffer.begin() + bytesRead), comp;
+        if (!compressChunk(raw, comp)) { fclose(f); return; }
+        uint32_t orig = htonl((uint32_t)bytesRead);
+        uint32_t cps = htonl((uint32_t)comp.size());
+        send(fd, (char*)&orig, sizeof(orig), 0);
+        send(fd, (char*)&cps, sizeof(cps), 0);
         size_t sent = 0;
-        while (sent < n) {
-            ssize_t s = send(fd, buf + sent, n - sent, 0);
-            if (s <= 0) { perror("send"); fclose(f); return; }
+        while (sent < comp.size()) {
+            ssize_t s = send(fd, comp.data() + sent, comp.size() - sent, 0);
+            if (s <= 0) { perror("send data"); fclose(f); return; }
             sent += s;
         }
     }
@@ -95,11 +108,23 @@ void receiveFile(int fd, const std::string &out) {
     std::cout << "[DEBUG] Receiving to: " << out << std::endl;
     FILE* f = fopen(out.c_str(), "wb");
     if (!f) { perror("fopen receiveFile"); return; }
-    char buf[CHUNK_SIZE]; ssize_t n;
-    while ((n = recv(fd, buf, CHUNK_SIZE, 0)) > 0) {
-        fwrite(buf,1,n,f);
+    while (true) {
+        uint32_t orig, cps;
+        if (recv(fd, (char*)&orig, sizeof(orig), 0) <= 0) break;
+        if (recv(fd, (char*)&cps, sizeof(cps), 0) <= 0) break;
+        orig = ntohl(orig);
+        cps = ntohl(cps);
+        std::vector<char> comp(cps);
+        size_t recvd = 0;
+        while (recvd < cps) {
+            ssize_t r = recv(fd, comp.data() + recvd, cps - recvd, 0);
+            if (r <= 0) { perror("recv data"); fclose(f); return; }
+            recvd += r;
+        }
+        std::vector<char> decomp;
+        if (!decompressChunk(comp, decomp, orig)) { fclose(f); return; }
+        fwrite(decomp.data(), 1, decomp.size(), f);
     }
-    if (n < 0) perror("recv");
     fclose(f);
     std::cout << "[DEBUG] Finished receiving file" << std::endl;
 }
@@ -147,7 +172,6 @@ std::vector<Receiver> discover(int timeoutSec = 3) {
     struct timeval tv{}; tv.tv_sec = timeoutSec; tv.tv_usec = 0;
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     char buf[256]; sockaddr_in from{}; socklen_t len = sizeof(from);
-    std::cout << "[DEBUG] Discovering receivers..." << std::endl;
     ssize_t n = recvfrom(s, buf, sizeof(buf)-1, 0, (sockaddr*)&from, &len);
     if (n > 0) {
         buf[n] = '\0'; std::string msg(buf);
@@ -171,25 +195,18 @@ int main(int argc, char* argv[]) {
     std::string cmd = (argc > 1 ? argv[1] : "");
 
     if (cmd == "listen") {
-        // start broadcasting
         std::thread bc(Discovery::broadcastAvailability, PORT_DEFAULT);
         bc.detach();
-
         int lst = FileTransfer::createListener(PORT_DEFAULT);
         std::cout << "QuickDrop listening on port " << PORT_DEFAULT << ". Press Ctrl-C to quit." << std::endl;
-
         while (true) {
             sockaddr_in peer{}; socklen_t len = sizeof(peer);
             int conn = accept(lst, (sockaddr*)&peer, &len);
-            if (conn < 0) {
-                perror("accept");
-                break;
-            }
+            if (conn < 0) { perror("accept"); break; }
             std::cout << "[DEBUG] Connection from " << inet_ntoa(peer.sin_addr) << std::endl;
             FileTransfer::receiveFile(conn, "received.bin");
             CLOSE_SOCKET(conn);
         }
-
         CLOSE_SOCKET(lst);
         FileTransfer::cleanupSockets();
         return 0;
@@ -197,7 +214,7 @@ int main(int argc, char* argv[]) {
     else if (cmd == "discover") {
         auto peers = Discovery::discover();
         if (peers.empty()) std::cout << "No receivers found." << std::endl;
-        else for (size_t i=0; i<peers.size(); ++i)
+        else for (size_t i = 0; i < peers.size(); ++i)
             std::cout << "  " << (i+1) << ": " << peers[i].ip << ":" << peers[i].port << std::endl;
     }
     else if (cmd == "send" && argc == 3) {
