@@ -1,6 +1,6 @@
 // main.cpp
 // Compile with:
-//   g++ -std=c++11 main.cpp compression.cpp crypto.cpp encryption.cpp -lsodium -lzstd -o QuickDrop
+//   g++ -std=c++11 main.cpp compression.cpp crypto.cpp encryption.cpp -lsodium -lzstd -I/opt/homebrew/include -L/opt/homebrew/lib -o QuickDrop
 
 #include <iostream>
 #include <vector>
@@ -11,6 +11,7 @@
 #include <string>
 #include <cstdint>
 #include <sys/stat.h>
+#include <iomanip>
 
 #ifdef _WIN32
   #include <winsock2.h>
@@ -97,11 +98,22 @@ void sendFile(int fd, const std::string &path, const std::vector<unsigned char>&
     size_t bytesRead;
     uint64_t chunkCounter = 0;
     size_t bytesProcessed = 0;
+    auto startTime = std::chrono::steady_clock::now();  // <-- start timer
 
     while ((bytesRead = fread(buffer.data(), 1, CHUNK_SIZE, f)) > 0) {
         bytesProcessed += bytesRead;
-        int pct = int((double)bytesProcessed / totalSize * 100);
-        std::cout << "\rProgress: " << pct << "%" << std::flush;
+
+        // compute percentage and MB/s
+        auto now     = std::chrono::steady_clock::now();
+        double elapsed = std::chrono::duration<double>(now - startTime).count();
+        double mbps    = (bytesProcessed / (1024.0 * 1024.0)) / (elapsed > 0 ? elapsed : 1.0);
+        int pct       = int((double)bytesProcessed / totalSize * 100);
+
+        // updated progress line with MB/s
+        std::cout << "\rProgress: " << pct << "% (" 
+                  << std::fixed << std::setprecision(1) 
+                  << mbps << " MB/s)" 
+                  << std::flush;
 
         // Compress
         std::vector<char> raw(buffer.begin(), buffer.begin() + bytesRead);
@@ -132,7 +144,13 @@ void sendFile(int fd, const std::string &path, const std::vector<unsigned char>&
     }
 
     fclose(f);
-    std::cout << "\rProgress: 100%\n";
+
+    // final line: ensure 100%
+    std::cout << "\rProgress: 100% (" 
+              << std::fixed << std::setprecision(1)
+              << ((bytesProcessed / (1024.0 * 1024.0)) / 
+                 (std::chrono::duration<double>(std::chrono::steady_clock::now() - startTime).count())) 
+              << " MB/s)\n";
     std::cout << "[DEBUG] Finished sending file" << std::endl;
 }
 
