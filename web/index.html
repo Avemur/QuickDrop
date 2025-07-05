@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>QuickDrop</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>QuickDrop</h1>
+
+  <section id="discover">
+    <button id="btnDiscover">Discover Receivers</button>
+    <ul id="receiverList"></ul>
+  </section>
+
+  <section id="listen">
+    <input id="alias" placeholder="Your alias" value="QuickDropPeer">
+    <button id="btnListen">Listen</button>
+  </section>
+
+  <section id="send">
+    <select id="recvSelect"></select>
+    <input type="file" id="fileInput">
+    <button id="btnSend">Send File</button>
+  </section>
+
+  <section id="progress">
+    <div id="status">Idle</div>
+    <progress id="bar" max="100" value="0"></progress>
+    <div id="speed"></div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
