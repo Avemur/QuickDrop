@@ -1,9 +1,0 @@
-// QuickDrop main.c
-// Compile with: g++ -std=c++11 main.c compression.c -lzstd -o QuickDrop
-// maybe this g++ -std=c++11 main.c compression.c -lzstd -I/opt/homebrew/include -L/opt/homebrew/lib -o QuickDrop
-
-
-
-Future Plans:
-- resume/retry logic in the case of a broken connection mid transfer
-- 
