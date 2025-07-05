@@ -242,21 +242,17 @@ namespace Discovery {
         setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         char buf[256]; sockaddr_in from{}; socklen_t len = sizeof(from);
         ssize_t n = recvfrom(s, buf, sizeof(buf)-1, 0, (sockaddr*)&from, &len);
-        if (n > 0) {
-            buf[n] = '\0'; std::string msg(buf);
+        if (n > 0) { buf[n] = '\0'; std::string msg(buf);
             if (msg.rfind(DISCOVERY_MESSAGE, 0) == 0) {
-                size_t p1 = msg.find(':'), p2 = msg.find(':', p1+1);
-                if (p1 != std::string::npos && p2 != std::string::npos) {
-                    Receiver r;
-                    r.ip    = inet_ntoa(from.sin_addr);
-                    r.port  = std::stoi(msg.substr(p1+1, p2-p1-1));
-                    r.alias = msg.substr(p2+1);
-                    out.push_back(r);
+                size_t p1 = msg.find(':'); size_t p2 = msg.find(':', p1+1);
+                if (p1!=std::string::npos && p2!=std::string::npos) {
+                    Receiver r; r.ip = inet_ntoa(from.sin_addr);
+                    r.port = std::stoi(msg.substr(p1+1, p2-p1-1));
+                    r.alias = msg.substr(p2+1); out.push_back(r);
                 }
             }
         }
-        CLOSE_SOCKET(s);
-        return out;
+        CLOSE_SOCKET(s); return out;
     }
 }
 
@@ -274,107 +270,11 @@ int main(int argc, char* argv[]) {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>QuickDrop</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        .container { max-width: 800px; margin: 0 auto; }
-        .section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-        button { padding: 10px 20px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
-        button:hover { background: #0056b3; }
-        input[type=file] { margin: 10px 0; }
-        #peers { margin: 10px 0; }
-        .peer { padding: 5px; margin: 2px; background: #f8f9fa; border-radius: 3px; }
-    </style>
+    <title>QuickDrop Web UI</title>
 </head>
 <body>
-    <div class=container>
-        <h1>QuickDrop</h1>
-        
-        <div class=section>
-            <h3>Discover Peers</h3>
-            <button onclick=discoverPeers()>Discover</button>
-            <div id=peers></div>
-        </div>
-        
-        <div class=section>
-            <h3>Send File</h3>
-            <input type=file id=fileInput>
-            <input type=text id=targetIP placeholder=Target IP value=127.0.0.1>
-            <input type=number id=targetPort placeholder=Port value=8080>
-            <button onclick=sendFile()>Send File</button>
-        </div>
-        
-        <div class=section>
-            <h3>Listen for Files</h3>
-            <input type=text id=alias placeholder=Alias value=QuickDropPeer>
-            <button onclick=startListening()>Start Listening</button>
-        </div>
-    </div>
-    
-    <script>
-        async function discoverPeers() {
-            try {
-                const response = await fetch('/discover');
-                const peers = await response.json();
-                const peersDiv = document.getElementById('peers');
-                peersDiv.innerHTML = '';
-                peers.forEach(peer => {
-                    const peerDiv = document.createElement('div');
-                    peerDiv.className = 'peer';
-                    peerDiv.textContent = peer.alias + ' (' + peer.ip + ':' + peer.port + ')';
-                    peersDiv.appendChild(peerDiv);
-                });
-            } catch (error) {
-                console.error('Error discovering peers:', error);
-            }
-        }
-        
-        async function sendFile() {
-            const fileInput = document.getElementById('fileInput');
-            const targetIP = document.getElementById('targetIP').value;
-            const targetPort = document.getElementById('targetPort').value;
-            
-            if (!fileInput.files[0]) {
-                alert('Please select a file');
-                return;
-            }
-            
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
-            formData.append('ip', targetIP);
-            formData.append('port', targetPort);
-            
-            try {
-                const response = await fetch('/send', {
-                    method: 'POST',
-                    body: formData
-                });
-                if (response.ok) {
-                    alert('File sent successfully!');
-                } else {
-                    alert('Error sending file');
-                }
-            } catch (error) {
-                console.error('Error sending file:', error);
-                alert('Error sending file');
-            }
-        }
-        
-        async function startListening() {
-            const alias = document.getElementById('alias').value;
-            try {
-                const response = await fetch('/listen?alias=' + encodeURIComponent(alias));
-                if (response.ok) {
-                    alert('Started listening for files');
-                } else {
-                    alert('Error starting listener');
-                }
-            } catch (error) {
-                console.error('Error starting listener:', error);
-                alert('Error starting listener');
-            }
-        }
-    </script>
+    <h1>QuickDrop Web UI</h1>
+    <p>Web interface is working!</p>
 </body>
 </html>
             )");
@@ -393,7 +293,7 @@ int main(int argc, char* argv[]) {
         });
 
         // Listen
-        CROW_ROUTE(app, "/listen")([&](const crow::request& req){
+        CROW_ROUTE(app, "/listen")([&](const crow::request& req) {
             auto alias = req.url_params.get("alias")
                        ? req.url_params.get("alias")
                        : "QuickDropPeer";
@@ -415,22 +315,23 @@ int main(int argc, char* argv[]) {
         });
 
         // Send
-        CROW_ROUTE(app, "/send").methods("POST"_method)([&](const crow::request& req){
+        CROW_ROUTE(app, "/send").methods("POST"_method)([&](const crow::request& req) {
             auto parts = crow::multipart::message(req);
             std::string tmp = "/tmp/uploaded_file";
             std::string ip = "127.0.0.1";
             int port = PORT_DEFAULT;
-
-            // File
+            
+            // Get file part
             auto file_part = parts.get_part_by_name("file");
             if (!file_part.body.empty()) {
                 std::ofstream ofs(tmp, std::ios::binary);
                 ofs.write(file_part.body.c_str(), file_part.body.size());
             }
-            // IP/port
-            auto ip_part   = parts.get_part_by_name("ip");
+            
+            // Get ip and port parts
+            auto ip_part = parts.get_part_by_name("ip");
             auto port_part = parts.get_part_by_name("port");
-            if (!ip_part.body.empty())   ip   = ip_part.body;
+            if (!ip_part.body.empty()) ip = ip_part.body;
             if (!port_part.body.empty()) port = std::stoi(port_part.body);
 
             std::thread([tmp, ip, port]() {
@@ -507,7 +408,7 @@ int main(int argc, char* argv[]) {
         CLOSE_SOCKET(sock);
     } else if (cmd == "send-to" && argc == 4) {
         std::string filepath = argv[2];
-        std::string target   = argv[3];
+        std::string target = argv[3];
         size_t pos = target.find(':');
         std::string ip = target.substr(0, pos);
         int port = (pos != std::string::npos) ? std::stoi(target.substr(pos+1)) : PORT_DEFAULT;

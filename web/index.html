@@ -1,34 +1,56 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>QuickDrop</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>QuickDrop</h1>
+  <div id="container">
+    <!-- Landing -->
+    <section id="home" class="panel active">
+      <h1>QuickDrop</h1>
+      <div class="cards">
+        <button data-panel="listen">Listen / Receive</button>
+        <button data-panel="discover">Discover</button>
+        <button data-panel="send">Send File</button>
+      </div>
+    </section>
 
-  <section id="discover">
-    <button id="btnDiscover">Discover Receivers</button>
-    <ul id="receiverList"></ul>
-  </section>
+    <!-- Listen panel -->
+    <section id="listen" class="panel">
+      <h2>Listen / Receive</h2>
+      <label>
+        Alias:
+        <input id="listen-alias" type="text" placeholder="MyDevice" />
+      </label>
+      <button id="start-listen">Start Listening</button>
+      <pre id="listen-log"></pre>
+      <button class="back">← Back</button>
+    </section>
 
-  <section id="listen">
-    <input id="alias" placeholder="Your alias" value="QuickDropPeer">
-    <button id="btnListen">Listen</button>
-  </section>
+    <!-- Discover panel -->
+    <section id="discover" class="panel">
+      <h2>Discover Receivers</h2>
+      <button id="refresh-discover">Refresh List</button>
+      <ul id="peers-list"></ul>
+      <button class="back">← Back</button>
+    </section>
 
-  <section id="send">
-    <select id="recvSelect"></select>
-    <input type="file" id="fileInput">
-    <button id="btnSend">Send File</button>
-  </section>
-
-  <section id="progress">
-    <div id="status">Idle</div>
-    <progress id="bar" max="100" value="0"></progress>
-    <div id="speed"></div>
-  </section>
+    <!-- Send panel -->
+    <section id="send" class="panel">
+      <h2>Send File</h2>
+      <div id="drop-zone">Drag &amp; drop a file here, or click to select.</div>
+      <input id="send-file" type="file" hidden />
+      <label>
+        Peer:
+        <select id="send-peer"></select>
+      </label>
+      <button id="do-send" disabled>Send Now</button>
+      <pre id="send-log"></pre>
+      <button class="back">← Back</button>
+    </section>
+  </div>
 
   <script src="app.js"></script>
 </body>
